@@ -309,3 +309,6 @@ def main() -> None:
 
     app.add_handler(CommandHandler("start", start_cmd))
     app.add_handler(CallbackQueryHandler(on_callback))
+
+if __name__ == "__main__":
+    main()
