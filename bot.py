@@ -328,3 +328,38 @@ def main() -> None:
 
     app.run_polling()
     asyncio.get_event_loop().run_forever()  # ← ВОТ ЭТО КЛЮЧ
+
+import threading
+import uvicorn
+from fastapi import FastAPI
+
+app_api = FastAPI()
+
+@app_api.get("/")
+def health():
+    return {"status": "ok"}
+
+def run_api():
+    port = int(os.getenv("PORT", 8080))
+    uvicorn.run(app_api, host="0.0.0.0", port=port)
+
+def main() -> None:
+    token = os.getenv("TELEGRAM_BOT_TOKEN")
+    if not token:
+        raise RuntimeError("Не найден TELEGRAM_BOT_TOKEN")
+
+    app = ApplicationBuilder().token(token).build()
+
+    app.add_handler(CommandHandler("start", start_cmd))
+    app.add_handler(CallbackQueryHandler(on_callback))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
+
+    # 🚀 запускаем HTTP сервер в отдельном потоке
+    threading.Thread(target=run_api, daemon=True).start()
+
+    # 🤖 запускаем Telegram polling
+    app.run_polling()
+
+if __name__ == "__main__":
+    main()
+
