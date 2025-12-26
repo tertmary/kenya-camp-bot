@@ -311,4 +311,20 @@ def main() -> None:
     app.add_handler(CallbackQueryHandler(on_callback))
 
 if __name__ == "__main__":
-    main()
+
+from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, ContextTypes, filters
+import asyncio
+
+def main() -> None:
+    token = os.getenv("TELEGRAM_BOT_TOKEN")
+    if not token:
+        raise RuntimeError("Не найден TELEGRAM_BOT_TOKEN")
+
+    app = ApplicationBuilder().token(token).build()
+
+    app.add_handler(CommandHandler("start", start_cmd))
+    app.add_handler(CallbackQueryHandler(on_callback))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
+
+    app.run_polling()
+    asyncio.get_event_loop().run_forever()  # ← ВОТ ЭТО КЛЮЧ
