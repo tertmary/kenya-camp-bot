@@ -1,11 +1,6 @@
 #!/usr/bin/env python3
 import os
 import logging
-import threading
-import time
-
-from fastapi import FastAPI
-import uvicorn
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -20,101 +15,131 @@ from telegram.ext import (
 # ================== НАСТРОЙКИ ==================
 CHANNEL_URL = "https://t.me/fun_cultura_com"
 FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSdiMo_-N0q7pCbXi1gqp_EJb8iXSlntfG3ctiyp0JFD32Z5ew/viewform"
-
-REMINDER_DELAY = 60 * 60  # 1 час
+CAMP_DOC_PATH = "camp_details.pdf"
 
 # ================== ТЕКСТЫ ==================
 START_TEXT = (
     "Привет! 👋 Ты в боте про беговой кемп в Iten, Кения 🇰🇪\n\n"
     "Мы были там месяц и собираем русскую группу.\n\n"
-    "Что тебе важно сейчас?"
+    "Выбери, что тебе важно 👇"
+)
+
+INCLUDED_TEXT = (
+    "✅ Что входит в пакет:\n\n"
+    "— проживание (2-местный номер)\n"
+    "— 4-разовое питание\n"
+    "— беговые тренировки с кенийскими тренерами\n"
+    "— стадион / зал / бассейн\n"
+    "— 2 core-тренировки\n\n"
+    "Дополнительно: перелёт, виза, страховка, массаж."
 )
 
 PRICE_TEXT = (
-    "💰 Стоимость:\n\n"
+    "💰 Стоимость (ориентиры):\n\n"
     "1️⃣ Лонгстей без питания:\n"
     "— проживание: 1500 ₽/день\n"
-    "— еда: 500–1300 ₽/день\n\n"
+    "— питание: 500–1300 ₽/день\n\n"
     "2️⃣ Основной пакет:\n"
     "— проживание + 4-разовое питание\n"
-    "— беговые тренировки с кенийскими тренерами\n\n"
+    "— беговые тренировки с кенийскими тренерами\n"
+    "— вся инфраструктура\n\n"
     "Ориентир: ~42 € / день"
 )
 
-REMINDER_TEXT = (
-    "⏱ Прошёл час 🙂\n\n"
-    "Ты уже заполнил(а) анкету на предзапись?\n"
-    "Если нет — это займёт 1–2 минуты 👇"
+PRESIGN_TEXT = (
+    "📝 Предзапись в кемп:\n\n"
+    "Ты первым(ой) получишь:\n"
+    "— даты\n"
+    "— финальную цену\n"
+    "— ТОЧНУЮ смету\n\n"
+    "Заполни анкету по кнопке ниже 👇"
+)
+
+CHANNEL_TEXT = (
+    "В канале я делюсь:\n"
+    "— бытом кемпа\n"
+    "— подготовкой\n"
+    "— новостями по набору группы\n\n"
+    "Переходи 👇"
 )
 
 # ================== КЛАВИАТУРЫ ==================
 def main_menu():
     return InlineKeyboardMarkup([
+        [InlineKeyboardButton("Что входит", callback_data="included")],
         [InlineKeyboardButton("Сколько стоит", callback_data="price")],
+        [InlineKeyboardButton("📄 Документ о кемпе", callback_data="doc")],
         [InlineKeyboardButton("Предзапись", callback_data="presign")],
-        [InlineKeyboardButton("Перейти в канал", url=CHANNEL_URL)],
+        [InlineKeyboardButton("Перейти в канал", callback_data="channel")],
     ])
 
-def reminder_keyboard():
+def back_menu():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("Заполнить анкету", url=FORM_URL)],
-        [InlineKeyboardButton("Уже заполнил(а) ✅", callback_data="done")],
+        [InlineKeyboardButton("⬅️ Назад в меню", callback_data="menu")]
     ])
 
-# ================== FASTAPI ==================
-app_api = FastAPI()
-
-@app_api.get("/")
-def health():
-    return {"status": "ok"}
-
-def run_api():
-    port = int(os.getenv("PORT", 8080))
-    uvicorn.run(app_api, host="0.0.0.0", port=port)
-
-# ================== НАПОМИНАНИЕ ==================
-def schedule_reminder(bot, chat_id, user_id, storage):
-    if storage.get(user_id):
+# ================== ДОКУМЕНТ ==================
+async def send_doc(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
+    if not os.path.exists(CAMP_DOC_PATH):
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="Документ пока не загружен 🙂"
+        )
         return
 
-    def task():
-        time.sleep(REMINDER_DELAY)
-        if not storage.get(user_id):
-            bot.send_message(
-                chat_id=chat_id,
-                text=REMINDER_TEXT,
-                reply_markup=reminder_keyboard()
-            )
-
-    threading.Thread(target=task, daemon=True).start()
+    with open(CAMP_DOC_PATH, "rb") as f:
+        await context.bot.send_document(chat_id=chat_id, document=f)
 
 # ================== ХЕНДЛЕРЫ ==================
-user_done = {}
-
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(START_TEXT, reply_markup=main_menu())
 
 async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-
-    user_id = query.from_user.id
     chat_id = query.message.chat_id
 
-    if query.data == "price":
-        await query.edit_message_text(PRICE_TEXT, reply_markup=main_menu())
-        schedule_reminder(context.bot, chat_id, user_id, user_done)
+    if query.data == "menu":
+        await query.edit_message_text(START_TEXT, reply_markup=main_menu())
+
+    elif query.data == "included":
+        await query.edit_message_text(INCLUDED_TEXT, reply_markup=back_menu())
+
+    elif query.data == "price":
+        await query.edit_message_text(PRICE_TEXT, reply_markup=back_menu())
 
     elif query.data == "presign":
         await query.edit_message_text(
-            "Заполни анкету 👇",
-            reply_markup=reminder_keyboard()
+            PRESIGN_TEXT,
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("Заполнить анкету", url=FORM_URL)],
+                [InlineKeyboardButton("⬅️ Назад в меню", callback_data="menu")],
+            ])
         )
-        schedule_reminder(context.bot, chat_id, user_id, user_done)
 
-    elif query.data == "done":
-        user_done[user_id] = True
-        await query.edit_message_text("Отлично ✅ Я отметила.")
+    elif query.data == "channel":
+        await query.edit_message_text(
+            CHANNEL_TEXT,
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("Открыть канал", url=CHANNEL_URL)],
+                [InlineKeyboardButton("⬅️ Назад в меню", callback_data="menu")],
+            ])
+        )
+
+    elif query.data == "doc":
+        await send_doc(chat_id, context)
+
+async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = (update.message.text or "").strip().lower()
+
+    if text == "итен":
+        await update.message.reply_text(PRICE_TEXT, reply_markup=main_menu())
+        return
+
+    await update.message.reply_text(
+        "Выбери пункт меню 👇",
+        reply_markup=main_menu()
+    )
 
 # ================== MAIN ==================
 def main():
@@ -122,14 +147,14 @@ def main():
 
     token = os.getenv("TELEGRAM_BOT_TOKEN")
     if not token:
-        raise RuntimeError("Нет TELEGRAM_BOT_TOKEN")
+        raise RuntimeError("Не найден TELEGRAM_BOT_TOKEN")
 
     app = ApplicationBuilder().token(token).build()
 
     app.add_handler(CommandHandler("start", start_cmd))
     app.add_handler(CallbackQueryHandler(on_callback))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
 
-    threading.Thread(target=run_api, daemon=True).start()
     app.run_polling()
 
 if __name__ == "__main__":
