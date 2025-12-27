@@ -16,7 +16,16 @@ from telegram.ext import (
 CHANNEL_URL = "https://t.me/fun_cultura_com"
 FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSdiMo_-N0q7pCbXi1gqp_EJb8iXSlntfG3ctiyp0JFD32Z5ew/viewform"
 CAMP_DOC_PATH = "camp_details.pdf"
-DOC_CAPTION = "📄 Подробности кемпа (документ)"
+
+DOC_INTRO_TEXT = (
+    "📄 Ниже — документ с подробностями кемпа.\n\n"
+    "Там:\n"
+    "— формат проживания и питания\n"
+    "— что именно входит в тренировки\n"
+    "— как выглядит обычный день в Iten\n"
+    "— важные нюансы, о которых редко говорят\n\n"
+    "Посмотри спокойно, а если останутся вопросы — пиши 🙂"
+)
 
 # ================== ТЕКСТЫ ==================
 START_TEXT = (
@@ -68,7 +77,6 @@ def main_menu():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("Что входит", callback_data="included")],
         [InlineKeyboardButton("Сколько стоит", callback_data="price")],
-        [InlineKeyboardButton("📄 Документ о кемпе", callback_data="doc")],
         [InlineKeyboardButton("Предзапись", callback_data="presign")],
         [InlineKeyboardButton("Перейти в канал", callback_data="channel")],
     ])
@@ -79,24 +87,18 @@ def back_menu():
     ])
 
 # ================== ДОКУМЕНТ ==================
-async def send_doc(chat_id: int, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def send_doc(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
     if not os.path.exists(CAMP_DOC_PATH):
         await context.bot.send_message(
             chat_id=chat_id,
-            text=(
-                "Документ пока не найден 😅\n"
-                "Проверь, что файл называется camp_details.pdf и лежит рядом с bot.py.\n"
-                "Если хочешь — могу вместо файла отправлять ссылку."
-            )
+            text="Документ пока не найден 😅 Проверь, что camp_details.pdf лежит рядом с bot.py."
         )
         return
 
+    await context.bot.send_message(chat_id=chat_id, text=DOC_INTRO_TEXT)
+
     with open(CAMP_DOC_PATH, "rb") as f:
-        await context.bot.send_document(
-            chat_id=chat_id,
-            document=f,
-            caption=DOC_CAPTION
-        )
+        await context.bot.send_document(chat_id=chat_id, document=f)
 
 # ================== ХЕНДЛЕРЫ ==================
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -112,16 +114,17 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif query.data == "included":
         await query.edit_message_text(INCLUDED_TEXT, reply_markup=back_menu())
+        await send_doc(chat_id, context)
 
     elif query.data == "price":
         await query.edit_message_text(PRICE_TEXT, reply_markup=back_menu())
+        await send_doc(chat_id, context)
 
     elif query.data == "presign":
         await query.edit_message_text(
             PRESIGN_TEXT,
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("Заполнить анкету", url=FORM_URL)],
-                [InlineKeyboardButton("📄 Документ о кемпе", callback_data="doc")],
                 [InlineKeyboardButton("⬅️ Назад в меню", callback_data="menu")],
             ])
         )
@@ -135,14 +138,11 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ])
         )
 
-    elif query.data == "doc":
-        await send_doc(chat_id, context)
-
 async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (update.message.text or "").strip().lower()
-
     if text == "итен":
         await update.message.reply_text(PRICE_TEXT, reply_markup=main_menu())
+        await send_doc(update.message.chat_id, context)
         return
 
     await update.message.reply_text("Выбери пункт меню 👇", reply_markup=main_menu())
